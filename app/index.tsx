@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Animated, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { AudioManager, AudioRecorder } from 'react-native-audio-api';
 import { useSpeechToText, WHISPER_TINY_EN } from 'react-native-executorch';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -20,6 +20,10 @@ export default function HomeScreen() {
     // Recording state and animation
     const [isRecording, setIsRecording] = useState(false);
     const scaleAnim = useRef(new Animated.Value(1)).current;
+
+    // Transcription state management
+    const [committedText, setCommittedText] = useState('');
+    const [nonCommittedText, setNonCommittedText] = useState('');
 
     const startRecordingAnimation = () => {
         Animated.loop(
@@ -76,6 +80,9 @@ export default function HomeScreen() {
         stopRecordingAnimation();
         recorder.stop();
         model.streamStop(); // Signal end of audio stream
+
+        // Clear non-committed text when stopping recording
+        setNonCommittedText('');
     };
 
     useEffect(() => {
@@ -90,6 +97,21 @@ export default function HomeScreen() {
         AudioManager.requestRecordingPermissions();
     }, []);
 
+    // Monitor committed transcription changes
+    useEffect(() => {
+        if (model.committedTranscription) {
+            setCommittedText(prev => prev + model.committedTranscription);
+        }
+    }, [model.committedTranscription]);
+
+    // Monitor non-committed transcription changes (if available)
+    useEffect(() => {
+        // Check if the model has a nonCommittedTranscription property
+        if (model.nonCommittedTranscription !== undefined) {
+            setNonCommittedText(model.nonCommittedTranscription || '');
+        }
+    }, [model.nonCommittedTranscription]);
+
     const handleMicrophoneToggle = () => {
         if (isRecording) {
             handleStopStreaming();
@@ -98,7 +120,10 @@ export default function HomeScreen() {
         }
     };
 
-    console.log(model.downloadProgress);
+    const clearAllTranscriptions = () => {
+        setCommittedText('');
+        setNonCommittedText('');
+    };
 
     return (
         <SafeAreaView style={styles.container}>
@@ -137,7 +162,40 @@ export default function HomeScreen() {
                     </Animated.View>
                 </Pressable>
             )}
-            <Text style={styles.transcriptionText}>{model.committedTranscription}</Text>
+
+            {/* Transcription Display Area */}
+            <ScrollView style={styles.transcriptionContainer} showsVerticalScrollIndicator={false}>
+                {/* Clear Button */}
+                {(committedText || nonCommittedText) && (
+                    <Pressable
+                        style={styles.clearButton}
+                        onPress={clearAllTranscriptions}
+                    >
+                        <Text style={styles.clearButtonText}>Clear All</Text>
+                    </Pressable>
+                )}
+
+                {/* Committed Transcription - Permanent */}
+                {committedText ? (
+                    <View style={styles.committedTranscriptionContainer}>
+                        <Text style={styles.committedLabel}>Committed:</Text>
+                        <Text style={styles.committedText}>{committedText}</Text>
+                    </View>
+                ) : null}
+
+                {/* Non-Committed Transcription - Transient */}
+                {nonCommittedText ? (
+                    <View style={styles.nonCommittedTranscriptionContainer}>
+                        <Text style={styles.nonCommittedLabel}>Speaking:</Text>
+                        <Text style={styles.nonCommittedText}>{nonCommittedText}</Text>
+                    </View>
+                ) : null}
+
+                {/* Fallback to model's committed transcription if our state is empty */}
+                {!committedText && !nonCommittedText && model.committedTranscription ? (
+                    <Text style={styles.transcriptionText}>{model.committedTranscription}</Text>
+                ) : null}
+            </ScrollView>
         </SafeAreaView>
     );
 }
@@ -241,5 +299,63 @@ const styles = StyleSheet.create({
         color: '#ffffff',
         marginTop: 20,
         textAlign: 'center',
+    },
+    transcriptionContainer: {
+        marginTop: 30,
+        paddingHorizontal: 20,
+        width: '100%',
+        maxHeight: 300,
+    },
+    clearButton: {
+        backgroundColor: '#666666',
+        paddingHorizontal: 16,
+        paddingVertical: 8,
+        borderRadius: 20,
+        alignSelf: 'flex-end',
+        marginBottom: 16,
+    },
+    clearButtonText: {
+        color: '#ffffff',
+        fontSize: 14,
+        fontWeight: '600',
+    },
+    committedTranscriptionContainer: {
+        backgroundColor: '#2a2a2a',
+        borderRadius: 12,
+        padding: 16,
+        marginBottom: 12,
+        borderLeftWidth: 4,
+        borderLeftColor: '#4CAF50',
+    },
+    committedLabel: {
+        fontSize: 14,
+        color: '#4CAF50',
+        fontWeight: '600',
+        marginBottom: 8,
+    },
+    committedText: {
+        fontSize: 16,
+        color: '#ffffff',
+        lineHeight: 24,
+    },
+    nonCommittedTranscriptionContainer: {
+        backgroundColor: '#3a3a3a',
+        borderRadius: 12,
+        padding: 16,
+        borderLeftWidth: 4,
+        borderLeftColor: '#FF9800',
+        opacity: 0.8,
+    },
+    nonCommittedLabel: {
+        fontSize: 14,
+        color: '#FF9800',
+        fontWeight: '600',
+        marginBottom: 8,
+    },
+    nonCommittedText: {
+        fontSize: 16,
+        color: '#ffffff',
+        lineHeight: 24,
+        fontStyle: 'italic',
     },
 });
